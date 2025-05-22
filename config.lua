@@ -14,7 +14,13 @@ Config.AutoBanMessage = "You have been banned for exploiting the the impound sys
 
 Config.LockGarage = true --True restrict garage(store in one cnat take it out the other) False can take all cars out of all garages
 
+-- OX_Lib Notification Settings
+Config.NotificationPosition = 'top' -- top, top-right, top-left, bottom, bottom-right, bottom-left, center-right, center-left
+Config.NotificationDuration = 5000 -- Duration in milliseconds
 
+-- OX_Lib Menu Settings
+Config.MenuPosition = 'top-left' -- top-left, top-right, bottom-left, bottom-right
+Config.MenuTheme = 'dark' -- dark, light
 
 Config.BlipImpound = {
     Sprite = 527,
@@ -24,9 +30,9 @@ Config.BlipImpound = {
 }
 
 Config.DrawDistance = 100.0
+Config.MarkerType = 1
 
 --Impounds
-
 Config.CarPounds = {
     Pound_LosSantos = {
         PoundPoint = { x = 408.61, y = -1625.47, z = 28.29 },
@@ -48,9 +54,6 @@ Config.PoundMarker = {
     r = 0, g = 0, b = 100,     -- Blue Color
     x = 1.5, y = 1.5, z = 1.0  -- Standard Size Circle
 }
-
-
-
 
 --Garages
 Config.Garages = {
@@ -194,7 +197,6 @@ Config.Garages = {
         }
     },
     
-
     ["H"] = {
         ["positions"] = {
             ["menu"] = {
@@ -215,7 +217,6 @@ Config.Garages = {
         }
     },
     
-
     ["I"] = {
         ["positions"] = {
             ["menu"] = {
@@ -236,7 +237,6 @@ Config.Garages = {
         }
     },
     
-
     ["J"] = {
         ["positions"] = {
             ["menu"] = {
@@ -257,7 +257,6 @@ Config.Garages = {
         }
     },
     
-
     ["K"] = {
         ["positions"] = {
             ["menu"] = {
@@ -278,7 +277,6 @@ Config.Garages = {
         }
     },
     
-
     ["L"] = {
         ["positions"] = {
             ["menu"] = {
@@ -301,8 +299,8 @@ Config.Garages = {
 }
 
 Config.Labels = {
-    ["menu"] = "~INPUT_CONTEXT~ abrir a garagem. %s.",
-    ["vehicle"] = "'%s'ı para guardar o veículo ~INPUT_CONTEXT~"
+    ["menu"] = "Pressiona [E] para abrir a garagem %s",
+    ["vehicle"] = "Pressiona [E] para guardar o veículo '%s'"
 }
 
 Config.Trim = function(value)
@@ -313,4 +311,5 @@ Config.Trim = function(value)
     end
 end
 
+-- Legacy support
 Config.AlignMenu = "right" -- this is where the menu is located [left, right, center, top-right, top-left etc.]
