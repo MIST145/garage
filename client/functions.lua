@@ -1,81 +1,82 @@
-stopmove = false
+local stopmove = false
+local ESX = exports['es_extended']:getSharedObject()
+
 Citizen.CreateThread(function()
     while true do
        Citizen.Wait(0)
        if stopmove then
             FreezeEntityPosition(GetPlayerPed(-1), true)
-            print("Frozen")
        else
-        FreezeEntityPosition(GetPlayerPed(-1), false)
-            --print("Free")
+            FreezeEntityPosition(GetPlayerPed(-1), false)
        end
    end
 end)
 
-
-
-
-
 OpenGarageMenu = function()
-    ESX.UI.Menu.CloseAll()
     local currentGarage = cachedData["currentGarage"]
-
     if not currentGarage then return end
 
     HandleCamera(currentGarage, true)
 
     ESX.TriggerServerCallback("garage:fetchPlayerVehicles", function(fetchedVehicles)
-        local menuElements = {}
+        local options = {}
 
         for key, vehicleData in ipairs(fetchedVehicles) do
             local vehicleProps = vehicleData["props"]
+            local vehicleName = GetLabelText(GetDisplayNameFromVehicleModel(vehicleProps["model"]))
 
-            table.insert(menuElements, {
-                ["label"] = "usar " .. GetLabelText(GetDisplayNameFromVehicleModel(vehicleProps["model"])) .. " Matricula - " .. vehicleData["plate"],
-                ["vehicle"] = vehicleData
+            table.insert(options, {
+                title = vehicleName,
+                description = 'Matricula: ' .. vehicleData["plate"] .. ' | Clica para retirar',
+                icon = 'car',
+                metadata = {
+                    {label = 'Matrícula', value = vehicleData["plate"]},
+                    {label = 'Modelo', value = vehicleName}
+                },
+                args = {
+                    vehicle = vehicleData
+                },
+                onSelect = function(args)
+                    if args.vehicle then
+                        lib.hideContext()
+                        stopmove = false
+                        SpawnVehicle(args.vehicle["props"])
+                    end
+                end
             })
         end
 
-        if #menuElements == 0 then
-            table.insert(menuElements, {
-                ["label"] = "Não tens nenhum veículo guardado nesta garagem."
+        if #options == 0 then
+            table.insert(options, {
+                title = 'Sem veículos',
+                description = 'Não tens veículos guardados nesta garagem',
+                icon = 'exclamation-triangle',
+                disabled = true
             })
-        elseif #menuElements > 0 then
-            SpawnLocalVehicle(menuElements[1]["vehicle"]["props"], currentGarage)
+        elseif #options > 0 then
+            SpawnLocalVehicle(options[1].args.vehicle["props"], currentGarage)
         end
-            stopmove = true
-        ESX.UI.Menu.Open("default", GetCurrentResourceName(), "main_garage_menu", {
-            ["title"] = "Garagem - " .. currentGarage,
-            ["align"] = Config.AlignMenu,
-            ["elements"] = menuElements
-        }, function(menuData, menuHandle)
-                
-            local currentVehicle = menuData["current"]["vehicle"]
 
-            if currentVehicle then
-                menuHandle.close()
-                stopmove = false
-                SpawnVehicle(currentVehicle["props"])
-            end
-        end, function(menuData, menuHandle)
-            HandleCamera(currentGarage, false)
-            stopmove = false
-            menuHandle.close()
-        end, function(menuData, menuHandle)
-            local currentVehicle = menuData["current"]["vehicle"]
+        stopmove = true
 
-            if currentVehicle then
+        lib.registerContext({
+            id = 'garage_main_menu',
+            title = 'Garagem - ' .. currentGarage,
+            menu = 'garage_menu_back',
+            options = options,
+            onExit = function()
+                HandleCamera(currentGarage, false)
                 stopmove = false
-                SpawnLocalVehicle(currentVehicle["props"])
             end
-        end)
+        })
+
+        lib.showContext('garage_main_menu')
     end, currentGarage)
 end
 
 OpenVehicleMenu = function()
     ESX.TriggerServerCallback("garage:fetchPlayerVehicles", function(fetchedVehicles)
-        local menuElements = {}
-
+        local options = {}
         local gameVehicles = ESX.Game.GetVehicles()
         local pedCoords = GetEntityCoords(PlayerPedId())
 
@@ -87,79 +88,93 @@ OpenVehicleMenu = function()
                     local dstCheck = math.floor(#(pedCoords - GetEntityCoords(vehicle)))
 
                     if Config.Trim(GetVehicleNumberPlateText(vehicle)) == Config.Trim(vehicleProps["plate"]) then
-                        table.insert(menuElements, {
-                            ["label"] = GetLabelText(GetDisplayNameFromVehicleModel(vehicleProps["model"])) .. " com matricula - " .. vehicleData["plate"] .. " - " .. dstCheck .. " metros.",
-                            ["vehicleData"] = vehicleData,
-                            ["vehicleEntity"] = vehicle
+                        local vehicleName = GetLabelText(GetDisplayNameFromVehicleModel(vehicleProps["model"]))
+                        
+                        table.insert(options, {
+                            title = vehicleName,
+                            description = 'Matrícula: ' .. vehicleData["plate"] .. ' | Distância: ' .. dstCheck .. ' metros',
+                            icon = 'car',
+                            metadata = {
+                                {label = 'Matrícula', value = vehicleData["plate"]},
+                                {label = 'Distância', value = dstCheck .. ' metros'}
+                            },
+                            args = {
+                                vehicleData = vehicleData,
+                                vehicleEntity = vehicle
+                            },
+                            onSelect = function(args)
+                                if args.vehicleEntity then
+                                    ChooseVehicleAction(args.vehicleEntity, function(actionChosen)
+                                        VehicleAction(args.vehicleEntity, actionChosen)
+                                    end)
+                                end
+                            end
                         })
                     end
                 end
             end
         end
 
-        if #menuElements == 0 then
-            table.insert(menuElements, {
-                ["label"] = "Não tens veículos."
+        if #options == 0 then
+            table.insert(options, {
+                title = 'Sem veículos',
+                description = 'Não tens veículos nas ruas',
+                icon = 'exclamation-triangle',
+                disabled = true
             })
         end
 
-        ESX.UI.Menu.Open("default", GetCurrentResourceName(), "main_vehicle_menu", {
-            ["title"] = "Veículos possuidos",
-            ["align"] = Config.AlignMenu,
-            ["elements"] = menuElements
-        }, function(menuData, menuHandle)
-            local currentVehicle = menuData["current"]["vehicleEntity"]
+        lib.registerContext({
+            id = 'vehicle_main_menu',
+            title = 'Veículos Possuídos',
+            options = options
+        })
 
-            if currentVehicle then
-                ChooseVehicleAction(currentVehicle, function(actionChosen)
-                    VehicleAction(currentVehicle, actionChosen)
-                end)
-            end
-        end, function(menuData, menuHandle)
-            menuHandle.close()
-        end, function(menuData, menuHandle)
-            local currentVehicle = menuData["current"]["vehicle"]
-
-            if currentVehicle then
-                SpawnLocalVehicle(currentVehicle["props"])
-            end
-        end)
+        lib.showContext('vehicle_main_menu')
     end)
 end
 
 ChooseVehicleAction = function(vehicleEntity, callback)
     if not cachedData["blips"] then cachedData["blips"] = {} end
 
-    local menuElements = {
+    local options = {
         {
-            ["label"] = "Turn " .. (GetIsVehicleEngineRunning(vehicleEntity) and "off" or "on") .. " the engine.",
-            ["action"] = "change_engine_state"
+            title = (GetIsVehicleEngineRunning(vehicleEntity) and "Desligar" or "Ligar") .. " motor",
+            description = 'Controla o estado do motor do veículo',
+            icon = GetIsVehicleEngineRunning(vehicleEntity) and 'power-off' or 'play',
+            args = { action = "change_engine_state" },
+            onSelect = function(args)
+                callback(args.action)
+            end
         },
         {
-            ["label"] = "Turn " .. (DoesBlipExist(cachedData["blips"][vehicleEntity]) and "off" or "on") .. " gps tracker.",
-            ["action"] = "change_gps_state"
+            title = (DoesBlipExist(cachedData["blips"][vehicleEntity]) and "Desativar" or "Ativar") .. " GPS",
+            description = 'Controla o rastreador GPS do veículo',
+            icon = DoesBlipExist(cachedData["blips"][vehicleEntity]) and 'map-pin-off' or 'map-pin',
+            args = { action = "change_gps_state" },
+            onSelect = function(args)
+                callback(args.action)
+            end
         },
         {
-            ["label"] = "Control doors.",
-            ["action"] = "change_door_state"
-        },
+            title = "Controlar portas",
+            description = 'Abre/fecha as portas do veículo',
+            icon = 'door-open',
+            args = { action = "change_door_state" },
+            onSelect = function(args)
+                callback(args.action)
+            end
+        }
     }
 
-    ESX.UI.Menu.Open("default", GetCurrentResourceName(), "second_vehicle_menu", {
-        ["title"] = "Choose an action -" .. GetVehicleNumberPlateText(vehicleEntity),
-        ["align"] = Config.AlignMenu,
-        ["elements"] = menuElements
-    }, function(menuData, menuHandle)
-        local currentAction = menuData["current"]["action"]
+    lib.registerContext({
+        id = 'vehicle_action_menu',
+        title = 'Ações - ' .. GetVehicleNumberPlateText(vehicleEntity),
+        menu = 'vehicle_main_menu',
+        options = options
+    })
 
-        if currentAction then
-            menuHandle.close()
-
-            callback(currentAction)
-        end
-    end, function(menuData, menuHandle)
-        menuHandle.close()
-    end)
+    lib.showContext('vehicle_action_menu')
 end
 
 VehicleAction = function(vehicleEntity, action)
@@ -167,12 +182,19 @@ VehicleAction = function(vehicleEntity, action)
 
     while not NetworkHasControlOfEntity(vehicleEntity) do
         Citizen.Wait(0)
-    
         NetworkRequestControlOfEntity(vehicleEntity)
     end
 
     if action == "change_lock_state" then
-        if dstCheck >= Config.RangeCheck then return ESX.ShowNotification("You are too far from the vehicle to check.") end
+        if dstCheck >= Config.RangeCheck then 
+            return lib.notify({
+                title = 'Erro',
+                description = 'Estás muito longe do veículo',
+                type = 'error',
+                position = Config.NotificationPosition,
+                duration = Config.NotificationDuration
+            })
+        end
 
         PlayAnimation(PlayerPedId(), "anim@mp_player_intmenu@key_fob@", "fob_click", {
             ["speed"] = 8.0,
@@ -188,7 +210,6 @@ VehicleAction = function(vehicleEntity, action)
             else
                 SetVehicleLights(vehicleEntity, 0)
             end
-
             Citizen.Wait(300)
         end
 
@@ -214,9 +235,25 @@ VehicleAction = function(vehicleEntity, action)
             end
         end
 
-        ESX.ShowNotification(GetLabelText(GetDisplayNameFromVehicleModel(GetEntityModel(vehicleEntity))) .. " with plate - " .. GetVehicleNumberPlateText(vehicleEntity) .. " is now " .. (vehicleLockState == 1 and "LOCKED" or "UNLOCKED"))
+        local vehicleName = GetLabelText(GetDisplayNameFromVehicleModel(GetEntityModel(vehicleEntity)))
+        lib.notify({
+            title = 'Veículo ' .. (vehicleLockState == 1 and "Trancado" or "Destrancado"),
+            description = vehicleName .. ' com matrícula ' .. GetVehicleNumberPlateText(vehicleEntity),
+            type = 'success',
+            position = Config.NotificationPosition,
+            duration = Config.NotificationDuration
+        })
+
     elseif action == "change_door_state" then
-        if dstCheck >= Config.RangeCheck then return ESX.ShowNotification("You are too far from the vehicle to check.") end
+        if dstCheck >= Config.RangeCheck then 
+            return lib.notify({
+                title = 'Erro',
+                description = 'Estás muito longe do veículo',
+                type = 'error',
+                position = Config.NotificationPosition,
+                duration = Config.NotificationDuration
+            })
+        end
 
         ChooseDoor(vehicleEntity, function(doorChosen)
             if doorChosen then
@@ -227,31 +264,62 @@ VehicleAction = function(vehicleEntity, action)
                 end
             end
         end)
+
     elseif action == "change_engine_state" then
-        if dstCheck >= Config.RangeCheck then return ESX.ShowNotification("You are too far from the vehicle to check.") end
+        if dstCheck >= Config.RangeCheck then 
+            return lib.notify({
+                title = 'Erro',
+                description = 'Estás muito longe do veículo',
+                type = 'error',
+                position = Config.NotificationPosition,
+                duration = Config.NotificationDuration
+            })
+        end
 
         if GetIsVehicleEngineRunning(vehicleEntity) then
             SetVehicleEngineOn(vehicleEntity, false, false)
-
             cachedData["engineState"] = true
 
-            Citizen.CreateThread(function()
+            CreateThread(function()
                 while cachedData["engineState"] do
-                    Citizen.Wait(5)
-
+                    Wait(5)
                     SetVehicleUndriveable(vehicleEntity, true)
                 end
-
                 SetVehicleUndriveable(vehicleEntity, false)
             end)
+
+            lib.notify({
+                title = 'Motor Desligado',
+                description = 'O motor do veículo foi desligado',
+                type = 'success',
+                position = Config.NotificationPosition,
+                duration = Config.NotificationDuration
+            })
         else
             cachedData["engineState"] = false
-
             SetVehicleEngineOn(vehicleEntity, true, true)
+
+            lib.notify({
+                title = 'Motor Ligado',
+                description = 'O motor do veículo foi ligado',
+                type = 'success',
+                position = Config.NotificationPosition,
+                duration = Config.NotificationDuration
+            })
         end
+
     elseif action == "change_gps_state" then
         if DoesBlipExist(cachedData["blips"][vehicleEntity]) then
             RemoveBlip(cachedData["blips"][vehicleEntity])
+            cachedData["blips"][vehicleEntity] = nil
+
+            lib.notify({
+                title = 'GPS Desativado',
+                description = 'O rastreador GPS foi desativado',
+                type = 'inform',
+                position = Config.NotificationPosition,
+                duration = Config.NotificationDuration
+            })
         else
             cachedData["blips"][vehicleEntity] = AddBlipForEntity(vehicleEntity)
     
@@ -259,159 +327,196 @@ VehicleAction = function(vehicleEntity, action)
             SetBlipScale(cachedData["blips"][vehicleEntity], 1.05)
             SetBlipColour(cachedData["blips"][vehicleEntity], 30)
             BeginTextCommandSetBlipName("STRING")
-            AddTextComponentString("Personal vehicle - " .. GetVehicleNumberPlateText(vehicleEntity))
+            AddTextComponentString("Veículo Pessoal - " .. GetVehicleNumberPlateText(vehicleEntity))
             EndTextCommandSetBlipName(cachedData["blips"][vehicleEntity])
+
+            lib.notify({
+                title = 'GPS Ativado',
+                description = 'O rastreador GPS foi ativado',
+                type = 'success',
+                position = Config.NotificationPosition,
+                duration = Config.NotificationDuration
+            })
         end
     end
 end
 
 ChooseDoor = function(vehicleEntity, callback)
-    local menuElements = {
+    local options = {
         {
-            ["label"] = "Front left.",
-            ["door"] = 0
+            title = "Porta dianteira esquerda",
+            icon = 'door-open',
+            args = { door = 0 },
+            onSelect = function(args) callback(args.door) end
         },
         {
-            ["label"] = "Front right.",
-            ["door"] = 1
+            title = "Porta dianteira direita", 
+            icon = 'door-open',
+            args = { door = 1 },
+            onSelect = function(args) callback(args.door) end
         },
         {
-            ["label"] = "Back left.",
-            ["door"] = 2
+            title = "Porta traseira esquerda",
+            icon = 'door-open', 
+            args = { door = 2 },
+            onSelect = function(args) callback(args.door) end
         },
         {
-            ["label"] = "Back right.",
-            ["door"] = 3
+            title = "Porta traseira direita",
+            icon = 'door-open',
+            args = { door = 3 },
+            onSelect = function(args) callback(args.door) end
         },
         {
-            ["label"] = "Hood.",
-            ["door"] = 4
+            title = "Capot",
+            icon = 'car-front',
+            args = { door = 4 },
+            onSelect = function(args) callback(args.door) end
         },
         {
-            ["label"] = "Trunk.",
-            ["door"] = 5
+            title = "Porta-bagagens",
+            icon = 'car-rear',
+            args = { door = 5 },
+            onSelect = function(args) callback(args.door) end
         }
     }
 
-    ESX.UI.Menu.Open("default", GetCurrentResourceName(), "door_vehicle_menu", {
-        ["title"] = "Choose a door",
-        ["align"] = Config.AlignMenu,
-        ["elements"] = menuElements
-    }, function(menuData, menuHandle)
-        local currentDoor = menuData["current"]["door"]
+    lib.registerContext({
+        id = 'door_selection_menu',
+        title = 'Escolher Porta',
+        menu = 'vehicle_action_menu',
+        options = options
+    })
 
-        if currentDoor then
-            callback(currentDoor)
-        end
-    end, function(menuData, menuHandle)
-        menuHandle.close()
-    end)
+    lib.showContext('door_selection_menu')
 end
 
 SpawnLocalVehicle = function(vehicleProps)
-	local spawnpoint = Config.Garages[cachedData["currentGarage"]]["positions"]["vehicle"]
+    local spawnpoint = Config.Garages[cachedData["currentGarage"]]["positions"]["vehicle"]
 
-	WaitForModel(vehicleProps["model"])
+    WaitForModel(vehicleProps["model"])
 
-	if DoesEntityExist(cachedData["vehicle"]) then
-		DeleteEntity(cachedData["vehicle"])
-	end
-	
-	if not ESX.Game.IsSpawnPointClear(spawnpoint["position"], 3.0) then 
-		ESX.ShowNotification("Please move the vehicle that is in the way.")
+    if DoesEntityExist(cachedData["vehicle"]) then
+        DeleteEntity(cachedData["vehicle"])
+    end
+    
+    if not ESX.Game.IsSpawnPointClear(spawnpoint["position"], 3.0) then 
+        lib.notify({
+            title = 'Erro',
+            description = 'Remove o veículo que está no local de spawn',
+            type = 'error',
+            position = Config.NotificationPosition,
+            duration = Config.NotificationDuration
+        })
+        return
+    end
+    
+    if not IsModelValid(vehicleProps["model"]) then
+        return
+    end
 
-		return
-	end
-	
-	if not IsModelValid(vehicleProps["model"]) then
-		return
-	end
-
-	ESX.Game.SpawnLocalVehicle(vehicleProps["model"], spawnpoint["position"], spawnpoint["heading"], function(yourVehicle)
-		cachedData["vehicle"] = yourVehicle
-
-		SetVehicleProperties(yourVehicle, vehicleProps)
-
-		SetModelAsNoLongerNeeded(vehicleProps["model"])
-	end)
+    ESX.Game.SpawnLocalVehicle(vehicleProps["model"], spawnpoint["position"], spawnpoint["heading"], function(yourVehicle)
+        cachedData["vehicle"] = yourVehicle
+        SetVehicleProperties(yourVehicle, vehicleProps)
+        SetModelAsNoLongerNeeded(vehicleProps["model"])
+    end)
 end
 
 SpawnVehicle = function(vehicleProps)
-	local spawnpoint = Config.Garages[cachedData["currentGarage"]]["positions"]["vehicle"]
+    local spawnpoint = Config.Garages[cachedData["currentGarage"]]["positions"]["vehicle"]
 
-	WaitForModel(vehicleProps["model"])
+    WaitForModel(vehicleProps["model"])
 
-	if DoesEntityExist(cachedData["vehicle"]) then
-		DeleteEntity(cachedData["vehicle"])
-	end
-	
-	if not ESX.Game.IsSpawnPointClear(spawnpoint["position"], 3.0) then 
-		ESX.ShowNotification("Retirar o veículo que está no sitio de spawn.")
+    if DoesEntityExist(cachedData["vehicle"]) then
+        DeleteEntity(cachedData["vehicle"])
+    end
+    
+    if not ESX.Game.IsSpawnPointClear(spawnpoint["position"], 3.0) then 
+        lib.notify({
+            title = 'Erro', 
+            description = 'Remove o veículo que está no local de spawn',
+            type = 'error',
+            position = Config.NotificationPosition,
+            duration = Config.NotificationDuration
+        })
+        return
+    end
+    
+    local gameVehicles = ESX.Game.GetVehicles()
 
-		return
-	end
-	
-	local gameVehicles = ESX.Game.GetVehicles()
-
-	for i = 1, #gameVehicles do
-		local vehicle = gameVehicles[i]
-
+    for i = 1, #gameVehicles do
+        local vehicle = gameVehicles[i]
         if DoesEntityExist(vehicle) then
-			if Config.Trim(GetVehicleNumberPlateText(vehicle)) == Config.Trim(vehicleProps["plate"]) then
-				ESX.ShowNotification("Este veículo está nas ruas, você não pode tirar dois dos mesmos veículos.")
+            if Config.Trim(GetVehicleNumberPlateText(vehicle)) == Config.Trim(vehicleProps["plate"]) then
+                lib.notify({
+                    title = 'Erro',
+                    description = 'Este veículo já está nas ruas',
+                    type = 'error',
+                    position = Config.NotificationPosition,
+                    duration = Config.NotificationDuration
+                })
+                return HandleCamera(cachedData["currentGarage"])
+            end
+        end
+    end
 
-				return HandleCamera(cachedData["currentGarage"])
-			end
-		end
-	end
-
-	ESX.Game.SpawnVehicle(vehicleProps["model"], spawnpoint["position"], spawnpoint["heading"], function(yourVehicle)
-		SetVehicleProperties(yourVehicle, vehicleProps)
-
+    ESX.Game.SpawnVehicle(vehicleProps["model"], spawnpoint["position"], spawnpoint["heading"], function(yourVehicle)
+        SetVehicleProperties(yourVehicle, vehicleProps)
         NetworkFadeInEntity(yourVehicle, true, true)
-
-		SetModelAsNoLongerNeeded(vehicleProps["model"])
-
-		--TaskWarpPedIntoVehicle(PlayerPedId(), yourVehicle, -1)
-
+        SetModelAsNoLongerNeeded(vehicleProps["model"])
         SetEntityAsMissionEntity(yourVehicle, true, true)
         
-        ESX.ShowNotification("You spawned your vehicle.")
+        lib.notify({
+            title = 'Sucesso',
+            description = 'Veículo retirado da garagem',
+            type = 'success',
+            position = Config.NotificationPosition,
+            duration = Config.NotificationDuration
+        })
 
         HandleCamera(cachedData["currentGarage"])
-	end)
+    end)
+    
     TriggerServerEvent("garage:takecar", vehicleProps["plate"], false)
 end
 
 PutInVehicle = function()
     local vehicle = GetVehiclePedIsUsing(PlayerPedId())
 
-	if DoesEntityExist(vehicle) then
-		local vehicleProps = GetVehicleProperties(vehicle)
+    if DoesEntityExist(vehicle) then
+        local vehicleProps = GetVehicleProperties(vehicle)
 
-		ESX.TriggerServerCallback("garage:validateVehicle", function(valid)
-			if valid then
-				TaskLeaveVehicle(PlayerPedId(), vehicle, 0)
-	
-				while IsPedInVehicle(PlayerPedId(), vehicle, true) do
-					Citizen.Wait(0)
-				end
-	
-				Citizen.Wait(500)
-	
-				NetworkFadeOutEntity(vehicle, true, true)
-	
-				Citizen.Wait(100)
-	
-				ESX.Game.DeleteVehicle(vehicle)
+        ESX.TriggerServerCallback("garage:validateVehicle", function(valid)
+            if valid then
+                TaskLeaveVehicle(PlayerPedId(), vehicle, 0)
+    
+                while IsPedInVehicle(PlayerPedId(), vehicle, true) do
+                    Citizen.Wait(0)
+                end
+    
+                Citizen.Wait(500)
+                NetworkFadeOutEntity(vehicle, true, true)
+                Citizen.Wait(100)
+                ESX.Game.DeleteVehicle(vehicle)
 
-				ESX.ShowNotification("Estacionas-te o veículo.")
-			else
-				ESX.ShowNotification("Este carro é teu???")
-			end
-
-		end, vehicleProps, cachedData["currentGarage"])
-	end
+                lib.notify({
+                    title = 'Sucesso',
+                    description = 'Veículo guardado na garagem',
+                    type = 'success', 
+                    position = Config.NotificationPosition,
+                    duration = Config.NotificationDuration
+                })
+            else
+                lib.notify({
+                    title = 'Erro',
+                    description = 'Este veículo não te pertence',
+                    type = 'error',
+                    position = Config.NotificationPosition,
+                    duration = Config.NotificationDuration
+                })
+            end
+        end, vehicleProps, cachedData["currentGarage"])
+    end
 end
 
 SetVehicleProperties = function(vehicle, vehicleProps)
@@ -419,8 +524,14 @@ SetVehicleProperties = function(vehicle, vehicleProps)
 
     SetVehicleEngineHealth(vehicle, vehicleProps["engineHealth"] and vehicleProps["engineHealth"] + 0.0 or 1000.0)
     SetVehicleBodyHealth(vehicle, vehicleProps["bodyHealth"] and vehicleProps["bodyHealth"] + 0.0 or 1000.0)
-    SetVehicleFuelLevel(vehicle, vehicleProps["fuelLevel"] and vehicleProps["fuelLevel"] + 0.0 or 1000.0)
-    exports["np-fuel"]:SetFuel(vehicle, vehicleProps["fuelLevel"] and vehicleProps["fuelLevel"] + 0.0 or 100)
+    SetVehicleFuelLevel(vehicle, vehicleProps["fuelLevel"] and vehicleProps["fuelLevel"] + 0.0 or 100.0)
+    
+    -- Fuel system compatibility
+    if GetResourceState("np-fuel") == "started" then
+        exports["np-fuel"]:SetFuel(vehicle, vehicleProps["fuelLevel"] and vehicleProps["fuelLevel"] + 0.0 or 100)
+    elseif GetResourceState("LegacyFuel") == "started" then
+        exports["LegacyFuel"]:SetFuel(vehicle, vehicleProps["fuelLevel"] and vehicleProps["fuelLevel"] + 0.0 or 100)
+    end
 
     if vehicleProps["windows"] then
         for windowId = 1, 13, 1 do
@@ -463,7 +574,7 @@ GetVehicleProperties = function(vehicle)
         
                 if tyreId == false then
                     tyreId = IsVehicleTyreBurst(vehicle, id, true)
-                    vehicleProps["tyres"][ #vehicleProps["tyres"]] = tyreId
+                    vehicleProps["tyres"][#vehicleProps["tyres"]] = tyreId
                 end
             else
                 vehicleProps["tyres"][#vehicleProps["tyres"] + 1] = false
@@ -492,7 +603,15 @@ GetVehicleProperties = function(vehicle)
 
         vehicleProps["engineHealth"] = GetVehicleEngineHealth(vehicle)
         vehicleProps["bodyHealth"] = GetVehicleBodyHealth(vehicle)
-        vehicleProps["fuelLevel"] = GetVehicleFuelLevel(vehicle)
+        
+        -- Fuel system compatibility
+        if GetResourceState("np-fuel") == "started" then
+            vehicleProps["fuelLevel"] = exports["np-fuel"]:GetFuel(vehicle)
+        elseif GetResourceState("LegacyFuel") == "started" then
+            vehicleProps["fuelLevel"] = exports["LegacyFuel"]:GetFuel(vehicle)
+        else
+            vehicleProps["fuelLevel"] = GetVehicleFuelLevel(vehicle)
+        end
 
         return vehicleProps
     end
@@ -511,33 +630,31 @@ HandleCamera = function(garage, toggle)
 
     if not Camerapos then return end
 
-	if not toggle then
-		if cachedData["cam"] then
-			DestroyCam(cachedData["cam"])
-		end
-		
-		if DoesEntityExist(cachedData["vehicle"]) then
-			DeleteEntity(cachedData["vehicle"])
-		end
+    if not toggle then
+        if cachedData["cam"] then
+            DestroyCam(cachedData["cam"])
+        end
+        
+        if DoesEntityExist(cachedData["vehicle"]) then
+            DeleteEntity(cachedData["vehicle"])
+        end
 
-		RenderScriptCams(0, 1, 750, 1, 0)
+        RenderScriptCams(0, 1, 750, 1, 0)
+        return
+    end
 
-		return
-	end
+    if cachedData["cam"] then
+        DestroyCam(cachedData["cam"])
+    end
 
-	if cachedData["cam"] then
-		DestroyCam(cachedData["cam"])
-	end
+    cachedData["cam"] = CreateCam("DEFAULT_SCRIPTED_CAMERA", true)
 
-	cachedData["cam"] = CreateCam("DEFAULT_SCRIPTED_CAMERA", true)
+    SetCamCoord(cachedData["cam"], Camerapos["x"], Camerapos["y"], Camerapos["z"])
+    SetCamRot(cachedData["cam"], Camerapos["rotationX"], Camerapos["rotationY"], Camerapos["rotationZ"])
+    SetCamActive(cachedData["cam"], true)
 
-	SetCamCoord(cachedData["cam"], Camerapos["x"], Camerapos["y"], Camerapos["z"])
-	SetCamRot(cachedData["cam"], Camerapos["rotationX"], Camerapos["rotationY"], Camerapos["rotationZ"])
-	SetCamActive(cachedData["cam"], true)
-
-	RenderScriptCams(1, 1, 750, 1, 1)
-
-	Citizen.Wait(500)
+    RenderScriptCams(1, 1, 750, 1, 1)
+    Citizen.Wait(500)
 end
 
 DrawScriptMarker = function(markerData)
@@ -555,12 +672,12 @@ DrawScriptMarker = function(markerData)
 end
 
 PlayAnimation = function(ped, dict, anim, settings)
-	if dict then
-        Citizen.CreateThread(function()
+    if dict then
+        CreateThread(function()
             RequestAnimDict(dict)
 
             while not HasAnimDictLoaded(dict) do
-                Citizen.Wait(100)
+                Wait(100)
             end
 
             if settings == nil then
@@ -596,10 +713,10 @@ PlayAnimation = function(ped, dict, anim, settings)
             end
       
             RemoveAnimDict(dict)
-		end)
-	else
-		TaskStartScenarioInPlace(ped, anim, 0, true)
-	end
+        end)
+    else
+        TaskStartScenarioInPlace(ped, anim, 0, true)
+    end
 end
 
 WaitForModel = function(model)
@@ -619,16 +736,21 @@ WaitForModel = function(model)
     end
 
     if not IsModelValid(model) then
-        return ESX.ShowNotification("Este carro não existe.")
+        return lib.notify({
+            title = 'Erro',
+            description = 'Este modelo de veículo não existe',
+            type = 'error',
+            position = Config.NotificationPosition,
+            duration = Config.NotificationDuration
+        })
     end
 
-	if not HasModelLoaded(model) then
-		RequestModel(model)
-	end
-	
-	while not HasModelLoaded(model) do
-		Citizen.Wait(0)
-
-		DrawScreenText("Carregando veículo " .. GetLabelText(GetDisplayNameFromVehicleModel(model)) .. "...", 255, 255, 255, 150)
-	end
+    if not HasModelLoaded(model) then
+        RequestModel(model)
+    end
+    
+    while not HasModelLoaded(model) do
+        Wait(0)
+        DrawScreenText("Carregando veículo " .. GetLabelText(GetDisplayNameFromVehicleModel(model)) .. "...", 255, 255, 255, 150)
+    end
 end
